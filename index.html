@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>お喋り反応アプリ（修正版）</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #fff9e6; }
+        button { font-size: 20px; padding: 15px 30px; cursor: pointer; border-radius: 50px; border: none; background: #f1c40f; color: #333; font-weight: bold; }
+        #status { margin-top: 20px; color: #7f8c8d; font-size: 14px; }
+        #result-box { margin-top: 30px; padding: 20px; background: white; border-radius: 15px; display: inline-block; min-width: 300px; border: 3px solid #f1c40f; }
+        #final { font-size: 24px; font-weight: bold; color: #2c3e50; }
+        .info { margin-top: 20px; font-size: 14px; color: #e67e22; }
+    </style>
+</head>
+<body>
+
+    <h1>お喋り反応アプリ</h1>
+    <div id="status">ループ対策済みやで！</div>
+    
+    <button id="startBtn">音声認識スタート</button>
+    
+    <div id="result-box">
+        <div id="final">（ここに言葉が出るで）</div>
+    </div>
+
+    <p class="info">※ 自動お喋りは「たまーに」鳴るようにしたやで。</p>
+
+    <script>
+        const triggerWords = ["お疲れ様", "ピカチュウ", "ケチャップ", 
+            "おはよう", "おやすみ", "いただきます", "ごちそうさまでした","元気","大好き","可愛い","仲間","ただいま","帰ろう","ありがとう","寝る","どうしたの","どう",];
+        const soundFiles = [
+            "pika1.mp3",
+            "pika2.mp3",
+            "pika3.mp3",
+            "pika4.mp3"
+        ];
+        const nightSpecialSound = "pika5.mp3"; 
+
+        const startBtn = document.getElementById('startBtn');
+        const finalSpan = document.getElementById('final');
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'ja-JP';
+        recognition.continuous = true;
+        recognition.interimResults = false;
+
+        let isRunning = false;
+        let isPlaying = false; // 再生中かどうかを判定するフラグ
+
+        startBtn.addEventListener('click', () => {
+            if (isRunning) return;
+            recognition.start();
+        });
+
+        recognition.onstart = () => {
+            isRunning = true;
+            startBtn.style.background = "#2ecc71";
+            startBtn.innerText = "聴いてるで…";
+        };
+
+        recognition.onresult = (event) => {
+            // 再生中なら反応しない（無限ループ防止）
+            if (isPlaying) return;
+
+            const last = event.results.length - 1;
+            const text = event.results[last][0].transcript.trim();
+            finalSpan.innerText = text;
+
+            const hit = triggerWords.some(word => text.includes(word));
+            if (hit) {
+                playRandomSound();
+            }
+        };
+
+        recognition.onend = () => { if (isRunning) recognition.start(); };
+
+        function playRandomSound() {
+            if (isPlaying) return; // 重複再生防止
+            isPlaying = true; // 「再生中」にする
+
+            let pool = [...soundFiles];
+            const hour = new Date().getHours();
+            if (hour >= 20 || hour < 5) pool.push(nightSpecialSound);
+
+            const randomIndex = Math.floor(Math.random() * pool.length);
+            const audio = new Audio(pool[randomIndex]);
+
+            // 音声が鳴り終わったら
+            audio.onended = () => {
+                // 3秒待ってからマイク入力を有効にする（残響を拾わないため）
+                setTimeout(() => {
+                    isPlaying = false;
+                    console.log("マイク再開や");
+                }, 3000);
+            };
+
+            audio.play().catch(e => {
+                isPlaying = false;
+                console.log("再生失敗：", e);
+            });
+        }
+
+        // --- 勝手に喋る（自動再生）機能 ---
+        // 5分（300,000ミリ秒）ごとに抽選
+        setInterval(() => {
+            if (!isRunning || isPlaying) return;
+            
+            const rand = Math.random();
+            if (rand < 0.2) { // 5%の確率で当たる
+                console.log("気まぐれ抽選に当選！");
+                playRandomSound();
+            }
+        }, 50000); 
+
+    </script>
+</body>
+</html>
