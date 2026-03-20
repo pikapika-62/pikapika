@@ -3,12 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>お喋りピカチュウ</title>
+    <title>お喋りピカチュウ（スマホ最適化版）</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #fff9e6; transition: background 0.3s; }
-        /* 再生中に背景を少し変えて、今「お休み中」なのを分かりやすくする */
         body.playing { background: #ffeaa7; }
-        
         button { font-size: 20px; padding: 15px 30px; cursor: pointer; border-radius: 50px; border: none; background: #f1c40f; color: #333; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         #status { margin-top: 20px; color: #7f8c8d; font-size: 14px; }
         #result-box { margin-top: 30px; padding: 20px; background: white; border-radius: 15px; display: inline-block; min-width: 300px; border: 3px solid #f1c40f; }
@@ -19,7 +17,7 @@
 <body>
 
     <h1>お喋り反応アプリ</h1>
-    <div id="status">ピカチュウ待機中…</div>
+    <div id="status">スマホ最適化済みやで！</div>
     
     <button id="startBtn">音声認識スタート</button>
     
@@ -29,20 +27,22 @@
     </div>
 
     <script>
-        // --- 反応ワードリストを大幅強化！ ---
         const triggerWords = [
             "お疲れ様", "ピカチュウ", "ケチャップ", "おはよう", "おやすみ", 
             "いただきます", "ごちそうさまでした", "元気", "大好き", "可愛い", 
             "かわいい", "仲間", "ただいま", "帰ろう", "ありがとう", "寝る", 
             "どうしたの", "どう", "すき", "好き", "かえろう",
-            // 「みて」のバリエーション
             "見て", "みて", "ミテ", "みせて", "見せて", "観て",
-            // 「きれい」のバリエーション
             "綺麗", "きれい", "キレイ", "美しい", "うつくしい"
         ];
 
-        const soundFiles = ["pika1.mp3", "pika2.mp3", "pika3.mp3", "pika4.mp3"];
-        const nightSpecialSound = "pika5.mp3"; 
+        // --- 音源のリサイクル準備 ---
+        const soundSources = ["pika1.mp3", "pika2.mp3", "pika3.mp3", "pika4.mp3"];
+        const nightSource = "pika5.mp3";
+        
+        // Audioオブジェクトをあらかじめ作っておく（メモリ節約のキモ！）
+        const audioPool = soundSources.map(src => new Audio(src));
+        const nightAudio = new Audio(nightSource);
 
         const startBtn = document.getElementById('startBtn');
         const finalSpan = document.getElementById('final');
@@ -59,6 +59,13 @@
 
         startBtn.addEventListener('click', () => {
             if (isRunning) return;
+            
+            // 【重要】スマホのブラウザ対策：
+            // ユーザーがボタンを押した瞬間に全音源を一度「空再生」して
+            // スマホの音声システムに「これから音出すで！」と登録させる
+            audioPool.forEach(audio => { audio.play().then(() => audio.pause()); });
+            nightAudio.play().then(() => nightAudio.pause());
+
             recognition.start();
         });
 
@@ -70,16 +77,11 @@
 
         recognition.onresult = (event) => {
             if (isPlaying) return;
-
             const last = event.results.length - 1;
             let text = event.results[last][0].transcript.trim();
-            
-            // 認識された文字を画面に出す（ここでどう認識されたか確認できる）
             finalSpan.innerText = text;
 
-            // 判定！
-            const hit = triggerWords.some(word => text.includes(word));
-            if (hit) {
+            if (triggerWords.some(word => text.includes(word))) {
                 playRandomSound();
             }
         };
@@ -90,38 +92,40 @@
             if (isPlaying) return;
             isPlaying = true;
             
-            // 視覚的に「今は反応しないよ」とわかるようにする
             document.body.classList.add('playing');
             lockStatus.innerText = "ピカチュウお喋り中...";
 
-            let pool = [...soundFiles];
+            // 鳴らす音源を決定
+            let audio;
             const hour = new Date().getHours();
-            if (hour >= 20 || hour < 5) pool.push(nightSpecialSound);
+            if (hour >= 20 || hour < 5) {
+                audio = nightAudio;
+            } else {
+                audio = audioPool[Math.floor(Math.random() * audioPool.length)];
+            }
 
-            const randomIndex = Math.floor(Math.random() * pool.length);
-            const audio = new Audio(pool[randomIndex]);
-
+            // 【リサイクル再生のコツ】
+            audio.currentTime = 0; // 再生位置を最初に戻す
+            
+            // 再生が終わった時の処理を1回だけ登録
             audio.onended = () => {
-                // クールダウンを少し短く（1.5秒）してみたで
                 setTimeout(() => {
                     isPlaying = false;
                     document.body.classList.remove('playing');
                     lockStatus.innerText = "";
-                }, 10); 
+                }, 500); // 10msだとスマホには短すぎるので500msくらいが安全
             };
 
             audio.play().catch(e => {
+                console.log("再生エラー:", e);
                 isPlaying = false;
                 document.body.classList.remove('playing');
             });
         }
 
-        // 自動再生（50秒ごとに20%）
         setInterval(() => {
             if (!isRunning || isPlaying) return;
-            if (Math.random() < 0.2) {
-                playRandomSound();
-            }
+            if (Math.random() < 0.2) playRandomSound();
         }, 50000); 
 
     </script>
