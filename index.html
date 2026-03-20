@@ -3,96 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ピカチュウ（軽量版）</title>
+    <title>ピカチュウ（最強音質版）</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #fff; }
-        button { font-size: 20px; padding: 20px; width: 80%; cursor: pointer; border-radius: 10px; background: #f1c40f; border: none; }
-        #result { margin-top: 30px; font-size: 20px; color: #333; }
+        button { font-size: 20px; padding: 25px; width: 80%; cursor: pointer; border-radius: 15px; background: #f1c40f; border: none; font-weight: bold; }
+        #result { margin-top: 30px; font-size: 20px; color: #555; }
+        #status { font-size: 12px; color: #999; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
     <h1>ピカチュウ反応</h1>
-    <button id="startBtn">スタート（ここを押してや）</button>
+    <div id="status">Web Audio API 起動準備中...</div>
+    <button id="startBtn">アプリを起動する</button>
     <div id="result">ここに言葉が出るで</div>
-
-    <!-- 【ポイント1】音源を最初からHTMLに埋め込んでおく -->
-    <div style="display:none">
-        <audio id="s1" src="pika1.mp3" preload="auto"></audio>
-        <audio id="s2" src="pika2.mp3" preload="auto"></audio>
-        <audio id="s3" src="pika3.mp3" preload="auto"></audio>
-        <audio id="s4" src="pika4.mp3" preload="auto"></audio>
-        <audio id="s5" src="pika5.mp3" preload="auto"></audio>
-    </div>
 
     <script>
         const triggerWords = ["お疲れ様", "ピカチュウ", "おはよう", "おやすみ", "元気", "大好き", "可愛い", "ただいま", "ありがとう", "見て", "みて", "綺麗", "きれい"];
+        const soundFiles = ["pika1.mp3", "pika2.mp3", "pika3.mp3", "pika4.mp3",];
         
         const startBtn = document.getElementById('startBtn');
         const resultDiv = document.getElementById('result');
+        const statusDiv = document.getElementById('status');
 
+        // --- Web Audio API の準備 ---
+        let audioCtx;
+        let audioBuffers = {}; // 音データをここに溜める
+
+        // 音声を事前にロードしてデコード（解凍）する関数
+        async function loadSounds() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            statusDiv.innerText = "音声を読み込み中...";
+            
+            for (let file of soundFiles) {
+                try {
+                    const response = await fetch(file);
+                    const arrayBuffer = await response.arrayBuffer();
+                    // ここでメモリ上に展開（デコード）する
+                    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    audioBuffers[file] = audioBuffer;
+                } catch (e) {
+                    console.error("読み込み失敗:", file, e);
+                }
+            }
+            statusDiv.innerText = "準備完了！喋りかけてや。";
+        }
+
+        // 音を鳴らす専用の関数（超高速・低負荷）
+        function playBuffer(file) {
+            if (!audioBuffers[file] || !audioCtx) return;
+
+            // 再生用のソースをその都度作成（軽量）
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffers[file];
+            source.connect(audioCtx.destination);
+            source.start(0);
+        }
+
+        // --- 音声認識の準備 ---
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
         recognition.continuous = true;
         recognition.interimResults = false;
 
-        let isPlaying = false;
+        startBtn.addEventListener('click', async () => {
+            // 初回クリック時にオーディオコンテキストを有効にする（ブラウザの決まり）
+            if (!audioCtx) {
+                await loadSounds();
+            }
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
 
-        startBtn.addEventListener('click', () => {
             recognition.start();
             startBtn.innerText = "聴いてるで...";
-            startBtn.style.background = "#ccc";
+            startBtn.style.background = "#eee";
+            startBtn.disabled = true;
         });
 
         recognition.onresult = (event) => {
-            // 再生中なら何もしない（ここでCPUの負担を減らす）
-            if (isPlaying) return;
-
             const text = event.results[event.results.length - 1][0].transcript.trim();
             resultDiv.innerText = text;
 
             if (triggerWords.some(word => text.includes(word))) {
-                playPika();
+                const hour = new Date().getHours();
+                let pickedFile;
+                if (hour >= 20 || hour < 5) {
+                    pickedFile = "pika5.mp3";
+                } else {
+                    pickedFile = soundFiles[Math.floor(Math.random() * 4)];
+                }
+                playBuffer(pickedFile);
             }
         };
 
-        // 万が一止まっても自動で再開
+        // 止まったら自動再開
         recognition.onend = () => { recognition.start(); };
-
-        function playPika() {
-            if (isPlaying) return;
-            isPlaying = true;
-
-            // 【ポイント2】夜間判定
-            const hour = new Date().getHours();
-            let audioId;
-            if (hour >= 20 || hour < 5) {
-                audioId = "s5";
-            } else {
-                // s1〜s4の中からランダムに選ぶ
-                audioId = "s" + (Math.floor(Math.random() * 4) + 1);
-            }
-
-            const audio = document.getElementById(audioId);
-            
-            // 【ポイント3】再生位置を戻して鳴らす
-            audio.currentTime = 0;
-            audio.play().then(() => {
-                // 鳴り終わるまで待つ
-                audio.onended = () => {
-                    // 鳴り終わってから少しだけ余裕を持ってフラグを戻す
-                    setTimeout(() => { isPlaying = false; }, 500);
-                };
-            }).catch(e => {
-                isPlaying = false;
-            });
-        }
 
         // 自動再生
         setInterval(() => {
-            if (!isPlaying) playPika();
-        }, 60000 * 5); // 5分に1回くらいに減らしたやで
+            if (audioCtx) {
+                const pickedFile = soundFiles[Math.floor(Math.random() * 4)];
+                playBuffer(pickedFile);
+            }
+        }, 300000); // 5分
 
     </script>
 </body>
